@@ -9,7 +9,7 @@ import requests
 import re
 from bs4 import BeautifulSoup
 from gtts import gTTS
-
+from logger.app_logger import app_logger
 
 # ============================ CHATBOT CLASS ============================
 
@@ -21,6 +21,7 @@ class ChatBot:
     def __init__(self) -> None:
         """Initialize the ChatBot instance with a conversation history."""
         self.history: List[Dict[str, str]] = [{"role": "system", "content": "You are a helpful assistant."}]
+        app_logger.log_info("ChatBot instance initialized", level="INFO")
 
     def generate_response(self, prompt: str) -> str:
         """
@@ -33,6 +34,8 @@ class ChatBot:
             str: The chatbot's response to the provided prompt.
         """
         self.history.append({"role": "user", "content": prompt})
+        # app_logger.log_info(f"User prompt added to history: {prompt}", level="INFO")
+        app_logger.log_info("User prompt added to history", level="INFO")
 
         # Convert chat history into a string for subprocess input
         conversation = "\n".join(f"{msg['role']}: {msg['content']}" for msg in self.history)
@@ -47,16 +50,18 @@ class ChatBot:
             )
 
             if completion.returncode != 0:
-                print("Error:", completion.stderr)
+                app_logger.log_error(f"Error running subprocess: {completion.stderr}")
                 return "I'm sorry, I encountered an issue processing your request."
 
             response = completion.stdout.strip()
             self.history.append({"role": "assistant", "content": response})
+            # app_logger.log_info(f"Assistant response generated: {response}", level="INFO")
+            app_logger.log_info("Assistant response generated", level="INFO")
 
             return response
 
         except Exception as e:
-            print(f"Error sending query to the model: {e}")
+            app_logger.log_error(f"Error sending query to the model: {e}")
             return "I'm sorry, an error occurred while processing your request."
 
     async def rate_body_of_article(self, article_title: str, article_content: str) -> str:
@@ -83,7 +88,7 @@ class ChatBot:
         - Only return a single numeric value (1-5) with no extra text.
 
         **Example Output:**
-        `4`
+        `4` or `2` or `3.5` or `1.5`
         """
 
         try:
@@ -96,7 +101,7 @@ class ChatBot:
             )
 
             if completion.returncode != 0:
-                print("Error:", completion.stderr)
+                app_logger.log_error(f"Error running subprocess: {completion.stderr}")
                 return "Error"
 
             response = completion.stdout.strip()
@@ -104,12 +109,14 @@ class ChatBot:
             # Validate the rating is within the expected range
             if response.isdigit() and 1 <= int(response) <= 5:
                 self.history.append({"role": "assistant", "content": response})
+                app_logger.log_info(f"Article rated: {response}", level="INFO")
                 return response
             else:
+                app_logger.log_warning(f"Invalid rating received: {response}")
                 return "Error"
 
         except Exception as e:
-            print(f"Error sending query to the model: {e}")
+            app_logger.log_error(f"Error sending query to the model: {e}")
             return "Error"
 
 
@@ -132,15 +139,19 @@ def extract_news_body(news_url: str) -> str:
 
         response = requests.get(news_url, headers=headers, timeout=5)
         if response.status_code != 200:
+            app_logger.log_error(f"Failed to fetch article: {response.status_code}")
             return "Failed to fetch article."
 
         soup = BeautifulSoup(response.text, "html.parser")
         paragraphs = soup.find_all("p")
 
         # Extract and return cleaned text
-        return "\n".join([p.text.strip() for p in paragraphs if p.text.strip()])
+        article_content = "\n".join([p.text.strip() for p in paragraphs if p.text.strip()])
+        app_logger.log_info(f"Article content extracted from {news_url}", level="INFO")
+        return article_content
 
     except Exception as e:
+        app_logger.log_error(f"Error extracting article content: {e}")
         return f"Error extracting article content: {e}"
 
 
@@ -161,12 +172,14 @@ Dict[str, Any]:
     Returns:
         Dict[str, Any]: A dictionary containing extracted news articles.
     """
+    app_logger.log_info(f"Starting DuckDuckGo news search for query: {query}", level="INFO")
 
     duckduckgo_news_url = f"https://duckduckgo.com/html/?q={query.replace(' ', '+')}&kl={location}&df={time_filter}&ia=news"
     headers = {"User-Agent": "Mozilla/5.0"}
 
     response = requests.get(duckduckgo_news_url, headers=headers)
     if response.status_code != 200:
+        app_logger.log_error(f"Failed to fetch news search results: {response.status_code}")
         return {"status": "error", "message": "Failed to fetch news search results"}
 
     soup = BeautifulSoup(response.text, "html.parser")
@@ -177,6 +190,7 @@ Dict[str, Any]:
         try:
             title_tag = result.find("a", class_="result__a")
             if not title_tag:
+                app_logger.log_warning(f"Title tag not found for result index {index}")
                 return None
 
             title = title_tag.text.strip()
@@ -193,6 +207,8 @@ Dict[str, Any]:
             bot = ChatBot()
             rating = await bot.rate_body_of_article(title, article_content)
 
+            app_logger.log_info(f"Processed article: {title}", level="INFO")
+
             return {
                 "num": index + 1,
                 "link": link,
@@ -203,7 +219,7 @@ Dict[str, Any]:
             }
 
         except Exception as e:
-            print(f"[DEBUG] Error processing article: {e}")
+            app_logger.log_error(f"Error processing article: {e}")
             return None
 
     tasks = [process_article(result, index) for index, result in enumerate(search_results[:num])]
@@ -211,8 +227,12 @@ Dict[str, Any]:
 
     extracted_results = [res for res in extracted_results if res is not None]
 
-    return {"status": "success", "results": extracted_results} if extracted_results else {
-        "status": "error", "message": "No valid news search results found"}
+    if extracted_results:
+        app_logger.log_info(f"News search completed successfully with {len(extracted_results)} results", level="INFO")
+        return {"status": "success", "results": extracted_results}
+    else:
+        app_logger.log_error("No valid news search results found")
+        return {"status": "error", "message": "No valid news search results found"}
 
 
 # ============================ UTILITY FUNCTIONS ============================
@@ -224,13 +244,9 @@ def current_year() -> int:
 
 def save_to_audio(text: str) -> None:
     """Converts text to an audio file using Google Text-to-Speech (gTTS)."""
-    tts = gTTS(text=text, lang="en")
-    tts.save("output.mp3")
-
-
-# ============================ TEST EXECUTION ============================
-
-if __name__ == "__main__":
-    query = "latest AI breakthroughs"
-    results = asyncio.run(invoke_duckduckgo_news_search(query, num=10, location="us-en", time_filter="w"))
-    print(json.dumps(results, indent=2))
+    try:
+        tts = gTTS(text=text, lang="en")
+        tts.save("output.mp3")
+        app_logger.log_info("Response converted to audio", level="INFO")
+    except Exception as e:
+        app_logger.log_error(f"Error converting response to audio: {e}")
