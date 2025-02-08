@@ -16,38 +16,75 @@ st.title("SearchBot 🤖")  # App title
 # ============================ SIDEBAR SETTINGS ============================
 
 with st.sidebar:
-    with st.expander("Instruction Manual"):
+    with st.expander("📖 Instruction Manual"):
         st.markdown(
             """
-            ## SearchBot 🤖
-            This Streamlit app allows you to search anything.
-            ### How to Use:
-            1. **Source**: Select your preferred search source.
-            2. **Number of Results**: Choose how many results to display.
-            3. **Location**: Customize search based on location.
-            4. **Response**: View the results in a table.
-            5. **Chat History**: Review previous conversations.
+            ## 🧠 SearchBot 🤖 - Your AI-Powered Research Assistant
+            Welcome to **SearchBot**, an advanced AI assistant that helps you find the latest news, trends, and information 
+            across various sources.
+
+            ### 🔹 How to Use:
+            1. **📌 Choose Search Source**  
+               - Select the type of search (News, Research Papers, Web Articles).
+            2. **📊 Choose Number of Results**  
+               - Decide how many results you want (1 to 10).
+            3. **🌍 Set Location**  
+               - Customize search results based on location.  
+               *(e.g., "us-en" for USA, "in-en" for India)*
+            4. **⏳ Filter by Time**  
+               - Search for the most recent news or past articles:  
+                 - **Past Day** 🕐 (Breaking News)  
+                 - **Past Week** 🗓 (Trending Topics)  
+                 - **Past Month** 📅 (Major Stories)  
+                 - **Past Year** ���� (Deep Research)  
+            5. **💬 Review Search Results & Chat History**  
+               - View results in an interactive table.  
+               - Chatbot provides summarized responses with references.
+
+            ---
+
+            ### 🔹 Live Examples You Can Try:
+            **📰 Find Latest News**
+            - *"What are the latest AI breakthroughs?"*
+            - *"Recent developments in space exploration."*
+
+            **📖 Research Papers & Analysis**
+            - *"Most cited papers on quantum computing."*
+            - *"Deep learning advancements in 2024."*
+
+            **🌍 Location-Based Information**
+            - *"Tech news in Silicon Valley."*
+            - *"Political updates in the UK."*
+
+            **⚡ AI-Powered Chatbot Insights**
+            - *"Summarize recent news on cryptocurrency."*
+            - *"Give me top AI news from last week with analysis."*
+
             """
         )
 
     # User inputs for search customization
-    num: int = st.number_input("Number of results", value=7, step=1, min_value=1)
-    location: str = st.text_input("Location (e.g., us-en, in-en)", value="us-en")
-    time_filter: str = st.selectbox("Time filter", ["Past Day", "Past Week", "Past Month", "Past Year"], index=1)
+    num: int = st.number_input("📊 Number of results", value=7, step=1, min_value=1, max_value=10)
+    location: str = st.text_input("🌍 Location (e.g., us-en, in-en)", value="us-en")
+    time_filter: str = st.selectbox(
+        "⏳ Time filter",
+        ["Past Day", "Past Week", "Past Month", "Past Year"],
+        index=1
+    )
 
     # Convert time filter to DuckDuckGo-compatible format
     time_mapping: Dict[str, str] = {"Past Day": "d", "Past Week": "w", "Past Month": "m", "Past Year": "y"}
     time_filter = time_mapping[time_filter]
 
-    only_use_chatbot: bool = st.checkbox("Only use chatbot.")  # Option to disable search and use only chatbot
+    only_use_chatbot: bool = st.checkbox("💬 Only use chatbot (Disable Search)")
 
     # Clear chat history button
-    if st.button("Clear Session"):
+    if st.button("🧹 Clear Session"):
         st.session_state.messages = []
         st.rerun()
 
     # Footer with dynamic year
-    st.markdown(f"<h6>Copyright © 2010-{current_year()} Present</h6>", unsafe_allow_html=True)
+    st.markdown(f"<h6>📅 Copyright © 2010-{current_year()} Present</h6>", unsafe_allow_html=True)
 
 # ============================ CHAT HISTORY SETUP ============================
 
@@ -88,21 +125,64 @@ if prompt := st.chat_input("Ask anything!"):
                     md_data: List[Dict[str, Any]] = search_results["results"]
                     response = f"Here are your search results:\n{md_data}"
 
-                    # **Format references as a Markdown Table (Clickable Title, Stars, Context)**
+                    def clean_title(title: str) -> str:
+                        """
+                        Cleans the title by replacing '|' with '-' to ensure proper formatting.
+
+                        Args:
+                            title (str): The original title.
+
+                        Returns:
+                            str: The cleaned title with '|' replaced by '-'.
+                        """
+                        return title.replace("|", " - ").strip()  # Replace '|' with ' - ' and remove leading/trailing spaces
+
+                    def generate_star_rating(rating: str) -> str:
+                        """
+                        Converts a numeric rating into a star representation (supports half-stars).
+
+                        Args:
+                            rating (str): The rating value as a string.
+
+                        Returns:
+                            str: A string representation of the rating using stars (⭐) and half-stars (⭐½).
+                        """
+                        try:
+                            rating_float: float = float(rating)  # Convert rating to float
+                            full_stars: int = int(rating_float)  # Extract full stars
+                            half_star: str = "⭐½" if (rating_float - full_stars) >= 0.5 else ""  # Add half-star if needed
+                            return "⭐" * full_stars + half_star  # Construct final star rating
+                        except ValueError:
+                            return "N/A"  # Fallback for non-numeric ratings
+
+                    # Start building reference table with proper Markdown formatting
                     ref_table_string = "| Num | Title | Rating | Context |\n|---|------|--------|---------|\n"
 
                     for res in md_data:
-                        # Convert rating number to star symbols (e.g., "⭐⭐⭐")
-                        stars: str = "⭐" * int(res['rating']) if res['rating'].isdigit() else "N/A"
+                        # **Fix: Clean the title by replacing '|' with '-'**
+                        title_cleaned = clean_title(res['title'])
 
-                        # Limit summary to 100 characters for brevity
-                        summary: str = res['summary'][:100] + "..." if len(res['summary']) > 100 else res['summary']
+                        # **Ensure the rating is always numeric before converting to stars**
+                        raw_rating = str(res.get('rating', 'N/A')).strip()  # Get rating and strip whitespace
 
-                        ref_table_string += f"| {res['num']} | [{res['title']}]({res['link']}) | {stars} | {summary} |\n"
+                        # Fix: Only convert rating if it’s a valid number
+                        if raw_rating.replace('.', '', 1).isdigit():  # Check if it’s a valid float
+                            stars = generate_star_rating(raw_rating)
+                        else:
+                            stars = "N/A"  # If it's text (like "MIT News"), default to "N/A"
 
-                else:
-                    response = "No search results found."
-                    ref_table_string = "**No references found.**"
+                        # **Ensure proper clickable links in the Title column**
+                        if res.get('link', '').startswith("http"):  # Ensure link exists and is valid
+                            title = f"[{title_cleaned}]({res['link']})"
+                        else:
+                            title = title_cleaned  # Fallback to text-only title
+
+                        # **Properly format Context column (limit to 100 chars)**
+                        context_summary = res.get('summary', '').strip()  # Ensure it's a string and strip spaces
+                        summary = context_summary[:100] + "..." if len(context_summary) > 100 else context_summary
+
+                        # **Final row construction**
+                        ref_table_string += f"| {res['num']} | {title} | {stars} | {summary} |\n"
 
             # **Generate chatbot response based on search results or chat history**
             bot = ChatBot()

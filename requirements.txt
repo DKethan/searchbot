@@ -4,3 +4,4 @@ streamlit
 serpapi
 gTTS
 bs4
+loguru
