@@ -5,6 +5,8 @@ import subprocess
 import urllib
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+
+import httpx
 import requests
 import re
 from bs4 import BeautifulSoup
@@ -157,66 +159,51 @@ def extract_news_body(news_url: str) -> str:
 
 # ============================ ASYNC NEWS SCRAPING ============================
 
-async def invoke_duckduckgo_news_search(query: str, num: int = 5, location: str = "us-en", time_filter: str = "w") -> \
-Dict[str, Any]:
-    """
-    Perform a DuckDuckGo News search, extract news headlines, fetch full content,
-    and rate articles using parallel asynchronous processing.
+async def fetch_url_with_retries(url: str, headers: dict, max_retries: int = 3, timeout: int = 20) -> Optional[str]:
+    """Fetches a URL with retries and timeout."""
+    async with httpx.AsyncClient() as client:
+        for attempt in range(max_retries):
+            try:
+                response = await client.get(url, headers=headers, timeout=timeout)
+                response.raise_for_status()
+                return response.text
+            except httpx.TimeoutException:
+                app_logger.log_error(f"Attempt {attempt+1}: Request timed out.")
+            except httpx.HTTPStatusError as e:
+                app_logger.log_error(f"Attempt {attempt+1}: HTTP error {e.response.status_code}.")
+            await asyncio.sleep(2)  # Wait before retrying
+    return None
 
-    Args:
-        query (str): The search query string.
-        num (int): Number of search results to retrieve.
-        location (str): The region code for location-based results (e.g., 'us-en', 'in-en').
-        time_filter (str): Time filter for news ('d' = past day, 'w' = past week, 'm' = past month, 'y' = past year).
-
-    Returns:
-        Dict[str, Any]: A dictionary containing extracted news articles.
-    """
+async def invoke_duckduckgo_news_search(query: str, num: int = 5, location: str = "us-en", time_filter: str = "w") -> Dict[str, Any]:
+    """Performs a DuckDuckGo News search asynchronously with retries."""
     app_logger.log_info(f"Starting DuckDuckGo news search for query: {query}", level="INFO")
 
     duckduckgo_news_url = f"https://duckduckgo.com/html/?q={query.replace(' ', '+')}&kl={location}&df={time_filter}&ia=news"
     headers = {"User-Agent": "Mozilla/5.0"}
 
-    response = requests.get(duckduckgo_news_url, headers=headers)
-    if response.status_code != 200:
-        app_logger.log_error(f"Failed to fetch news search results: {response.status_code}")
-        return {"status": "error", "message": "Failed to fetch news search results"}
+    html_content = await fetch_url_with_retries(duckduckgo_news_url, headers)
+    if not html_content:
+        return {"status": "error", "message": "Failed to fetch news search results after multiple retries."}
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    soup = BeautifulSoup(html_content, "html.parser")
     search_results = soup.find_all("div", class_="result__body")
 
     async def process_article(result, index: int) -> Optional[Dict[str, Any]]:
-        """Processes a single article: extracts details, fetches content, and rates it."""
+        """Extracts and processes an article."""
         try:
             title_tag = result.find("a", class_="result__a")
             if not title_tag:
-                app_logger.log_warning(f"Title tag not found for result index {index}")
                 return None
 
             title = title_tag.text.strip()
             raw_link = title_tag["href"]
-
             match = re.search(r"uddg=(https?%3A%2F%2F[^&]+)", raw_link)
             link = urllib.parse.unquote(match.group(1)) if match else "Unknown Link"
 
             snippet_tag = result.find("a", class_="result__snippet")
             summary = snippet_tag.text.strip() if snippet_tag else "No summary available."
 
-            article_content = extract_news_body(link)
-
-            bot = ChatBot()
-            rating = await bot.rate_body_of_article(title, article_content)
-
-            app_logger.log_info(f"Processed article: {title}", level="INFO")
-
-            return {
-                "num": index + 1,
-                "link": link,
-                "title": title,
-                "summary": summary,
-                "body": article_content,
-                "rating": rating
-            }
+            return {"num": index + 1, "link": link, "title": title, "summary": summary}
 
         except Exception as e:
             app_logger.log_error(f"Error processing article: {e}")
@@ -235,6 +222,7 @@ Dict[str, Any]:
         return {"status": "error", "message": "No valid news search results found"}
 
 
+
 # ============================ UTILITY FUNCTIONS ============================
 
 def current_year() -> int:
@@ -250,3 +238,7 @@ def save_to_audio(text: str) -> None:
         app_logger.log_info("Response converted to audio", level="INFO")
     except Exception as e:
         app_logger.log_error(f"Error converting response to audio: {e}")
+
+if __name__ == "__main__":
+    # test duckduckgo news search
+    asyncio.run(invoke_duckduckgo_news_search("AI in healthcare", num=2, location="us-en", time_filter="w"))

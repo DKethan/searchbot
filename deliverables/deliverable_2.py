@@ -311,7 +311,7 @@ if __name__ == "__main__":
     df = pd.DataFrame(data_list, columns=["user_prompt", "url_to_check", "func_rating", "custom_rating"])
 
     # Save to Excel
-    file_path = "url_validation_results.csv"
+    file_path = "samples/url_validation_results.csv"
     df.to_csv(file_path, index=False)
 
     # # Instantiate the URLValidator class
