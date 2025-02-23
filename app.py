@@ -184,11 +184,17 @@ if prompt := st.chat_input("Ask anything!"):
             response = bot.generate_response(
                 f"""
                 User prompt: {prompt}
-                response: {response}
-                Context: {[res.get('summary', '').strip() for res in md_data]}
-                While responding to the user,
-                please consider the User prompt and context; otherwise,
-                generate a response based on chat history which is response.
+                Previous response: {response}
+                Context: {', '.join(res.get('summary', '').strip() for res in md_data)}
+
+                Instructions:
+                1) Ensure the response is **directly relevant** to the User prompt and aligns with the Context.
+                2) Do **NOT** include unrelated or speculative information that is **not present in the Context**.
+                3) If Context provides relevant details, base the response **strictly on those details**.
+                4) If Context is **empty**, use Previous response **only if** it aligns with the User prompt.
+                5) If there is **insufficient information** in Context or Previous response, 
+                acknowledge it rather than generating unrelated details.
+                6) Keep the response **concise, accurate, and logically structured**.
                 """
             )
 

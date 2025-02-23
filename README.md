@@ -1,5 +1,6 @@
 # SearchBot 🤖
 
+![Image 1](deliverables/images/home.png)
 SearchBot is an advanced AI-powered research assistant that helps you find the latest news, trends, and information across various sources. It uses Streamlit for the user interface and integrates with DuckDuckGo for news searches.
 
 ## Features
@@ -13,7 +14,7 @@ SearchBot is an advanced AI-powered research assistant that helps you find the l
 
 1. **Clone the repository**:
     ```sh
-    git clone https://github.com/yourusername/searchbot.git
+    git clone https://github.com/DKethan/searchbot.git
     cd searchbot
     ```
 
@@ -91,17 +92,17 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 2. **Create a virtual environment**:
     ```sh
-    python3 -m venv venv
+    python3 -m venv sb-001
     ```
 
 3. **Activate the virtual environment**:
     - On macOS/Linux:
         ```sh
-        source venv/bin/activate
+        source sb-001/bin/activate
         ```
     - On Windows:
         ```sh
-        venv\Scripts\activate
+        sb-001\Scripts\activate
         ```
 
 4. **Install the dependencies**:
@@ -136,7 +137,7 @@ We welcome contributions! Please follow these steps to contribute:
 
 ### Getting Help
 
-If you encounter any issues or have questions, please open an issue on the GitHub repository or contact the maintainers.
+If you encounter any issues or have questions, please open an issue on the GitHub repository.
 
 ## Future Enhancements
 
