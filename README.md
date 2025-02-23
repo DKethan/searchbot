@@ -11,31 +11,31 @@ SearchBot is an advanced AI-powered research assistant that helps you find the l
 
 ## Installation
 
-1. Clone the repository:
+1. **Clone the repository**:
     ```sh
     git clone https://github.com/yourusername/searchbot.git
     cd searchbot
     ```
 
-2. Create a virtual environment and activate it:
+2. **Create a virtual environment and activate it**:
     ```sh
     python3 -m venv venv
     source venv/bin/activate  # On Windows use `venv\Scripts\activate`
     ```
 
-3. Install the required packages:
+3. **Install the required packages**:
     ```sh
     pip install -r requirements.txt
     ```
 
 ## Usage
 
-1. Run the Streamlit app:
+1. **Run the Streamlit app**:
     ```sh
     streamlit run app.py
     ```
 
-2. Open your web browser and go to `http://localhost:8501`.
+2. **Open your web browser and go to** `http://localhost:8501`.
 
 ## How to Use
 
@@ -73,3 +73,77 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - [DuckDuckGo](https://duckduckgo.com/)
 - [Google Text-to-Speech](https://pypi.org/project/gTTS/)
 - [Hugging Face](https://huggingface.co/)
+
+## Detailed Setup Instructions
+
+### Prerequisites
+
+- Python 3.8 or higher
+- pip (Python package installer)
+
+### Step-by-Step Setup
+
+1. **Clone the repository**:
+    ```sh
+    git clone https://github.com/yourusername/searchbot.git
+    cd searchbot
+    ```
+
+2. **Create a virtual environment**:
+    ```sh
+    python3 -m venv venv
+    ```
+
+3. **Activate the virtual environment**:
+    - On macOS/Linux:
+        ```sh
+        source venv/bin/activate
+        ```
+    - On Windows:
+        ```sh
+        venv\Scripts\activate
+        ```
+
+4. **Install the dependencies**:
+    ```sh
+    pip install -r requirements.txt
+    ```
+
+5. **Run the application**:
+    ```sh
+    streamlit run app.py
+    ```
+
+6. **Access the application**:
+    Open your web browser and navigate to `http://localhost:8501`.
+
+## Contributing
+
+We welcome contributions! Please follow these steps to contribute:
+
+1. Fork the repository.
+2. Create a new branch (`git checkout -b feature-branch`).
+3. Make your changes.
+4. Commit your changes (`git commit -m 'Add some feature'`).
+5. Push to the branch (`git push origin feature-branch`).
+6. Open a pull request.
+
+## Troubleshooting
+
+### Common Issues
+
+- **Dependency Installation**: If you encounter issues during `pip install`, ensure you have the correct version of Python and pip installed.
+
+### Getting Help
+
+If you encounter any issues or have questions, please open an issue on the GitHub repository or contact the maintainers.
+
+## Future Enhancements
+
+- **Additional Search Sources**: Integrate more search sources like Google Scholar, Bing, etc.
+- **Advanced Filtering**: Add more advanced filtering options for search results.
+- **User Authentication**: Implement user authentication for personalized search history and preferences.
+
+## Contact
+
+For any inquiries or support, please contact kethandoapati@gmail.com.
