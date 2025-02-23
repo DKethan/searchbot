@@ -1,19 +1,25 @@
 import asyncio
 import json
 import os
+import pickle
 import subprocess
-import urllib
+import time
+import urllib.parse
 from datetime import datetime
 from typing import Dict, List, Any, Optional
-
 import httpx
+import keras
+import numpy as np
 import requests
 import re
 from bs4 import BeautifulSoup
 from gtts import gTTS
+from huggingface_hub import hf_hub_download
+from keras.utils import pad_sequences
 from logger.app_logger import app_logger
-
-# ============================ CHATBOT CLASS ============================
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+import concurrent.futures
 
 class ChatBot:
     """
@@ -36,15 +42,14 @@ class ChatBot:
             str: The chatbot's response to the provided prompt.
         """
         self.history.append({"role": "user", "content": prompt})
-        # app_logger.log_info(f"User prompt added to history: {prompt}", level="INFO")
         app_logger.log_info("User prompt added to history", level="INFO")
 
         # Convert chat history into a string for subprocess input
-        conversation = "\n".join(f"{msg['role']}: {msg['content']}" for msg in self.history)
+        conversation: str = "\n".join(f"{msg['role']}: {msg['content']}" for msg in self.history)
 
         try:
             # Run the Llama model using Ollama
-            completion = subprocess.run(
+            completion: subprocess.CompletedProcess = subprocess.run(
                 ["ollama", "run", "llama3.2:latest"],
                 input=conversation,
                 capture_output=True,
@@ -55,9 +60,8 @@ class ChatBot:
                 app_logger.log_error(f"Error running subprocess: {completion.stderr}")
                 return "I'm sorry, I encountered an issue processing your request."
 
-            response = completion.stdout.strip()
+            response: str = completion.stdout.strip()
             self.history.append({"role": "assistant", "content": response})
-            # app_logger.log_info(f"Assistant response generated: {response}", level="INFO")
             app_logger.log_info("Assistant response generated", level="INFO")
 
             return response
@@ -77,8 +81,8 @@ class ChatBot:
         Returns:
             str: A rating between 1 and 5 based on relevance and quality.
         """
-        prompt = f"""
-        Given the following article title and content, provide a rating between 1 and 5 
+        prompt: str = f"""
+        Given the following article title and content, provide a rating between 1 and 5
         based on how well the content aligns with the title and its overall quality.
 
         - **Article Title**: {article_title}
@@ -95,7 +99,7 @@ class ChatBot:
 
         try:
             # Run the Llama model using Ollama
-            completion = subprocess.run(
+            completion: subprocess.CompletedProcess = subprocess.run(
                 ["ollama", "run", "llama3.2:latest"],
                 input=prompt,
                 capture_output=True,
@@ -106,7 +110,7 @@ class ChatBot:
                 app_logger.log_error(f"Error running subprocess: {completion.stderr}")
                 return "Error"
 
-            response = completion.stdout.strip()
+            response: str = completion.stdout.strip()
 
             # Validate the rating is within the expected range
             if response.isdigit() and 1 <= int(response) <= 5:
@@ -121,8 +125,42 @@ class ChatBot:
             app_logger.log_error(f"Error sending query to the model: {e}")
             return "Error"
 
+    async def rate_article_credibility(self, article_title: str, article_content: str) -> str:
+        """
+        Rate the credibility of an article using a locally created model.
 
-# ============================ EXTRACT NEWS BODY ============================
+        Args:
+            article_title (str): The title of the article.
+            article_content (str): The full content of the article.
+
+        Returns:
+            str: A credibility rating based on the model's prediction.
+        """
+        try:
+            # Load the model and tokenizer
+            model_path: str = hf_hub_download(repo_id="Dkethan/my-tf-nn-model-v1", filename="model.keras")
+            tokenizer_path: str = hf_hub_download(repo_id="Dkethan/my-tf-nn-model-v1", filename="tokenizer.pkl")
+
+            new_model = keras.models.load_model(model_path)
+            with open(tokenizer_path, "rb") as f:
+                tokenizer = pickle.load(f)
+
+            # Preprocess the input data
+            max_length: int = new_model.input_shape[0][1]
+            X_text: List[List[int]] = tokenizer.texts_to_sequences([article_title])
+            X_text = pad_sequences(X_text, maxlen=max_length, padding='post')
+            X_func_rating: np.ndarray = np.array([5]).reshape(-1, 1)  # Dummy rating for example
+
+            # Make predictions
+            predictions: np.ndarray = new_model.predict({"text_input": X_text, "func_rating_input": X_func_rating})
+            prediction: int = np.argmax(predictions, axis=1)[0]
+
+            app_logger.log_info(f"Article credibility rated: {prediction}", level="INFO")
+            return str(prediction)
+
+        except Exception as e:
+            app_logger.log_error(f"Error rating article credibility: {e}")
+            return "Error"
 
 def extract_news_body(news_url: str) -> str:
     """
@@ -134,83 +172,122 @@ def extract_news_body(news_url: str) -> str:
     Returns:
         str: Extracted full article content.
     """
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-        }
+    headers: Dict[str, str] = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    }
+    retries: int = 3
+    for attempt in range(retries):
+        try:
+            response: requests.Response = requests.get(news_url, headers=headers, timeout=10)
+            if response.status_code == 403:
+                app_logger.log_error(f"Access forbidden to article: {response.status_code}")
+                return "Access forbidden to article."
+            if response.status_code != 200:
+                app_logger.log_error(f"Failed to fetch article: {response.status_code}")
+                return "Failed to fetch article."
 
-        response = requests.get(news_url, headers=headers, timeout=5)
-        if response.status_code != 200:
-            app_logger.log_error(f"Failed to fetch article: {response.status_code}")
-            return "Failed to fetch article."
+            soup: BeautifulSoup = BeautifulSoup(response.text, "html.parser")
+            paragraphs: List[BeautifulSoup] = soup.find_all("p")
 
-        soup = BeautifulSoup(response.text, "html.parser")
-        paragraphs = soup.find_all("p")
+            # Extract and return cleaned text
+            article_content: str = "\n".join([p.text.strip() for p in paragraphs if p.text.strip()])
+            app_logger.log_info(f"Article content extracted from {news_url}", level="INFO")
+            return article_content
 
-        # Extract and return cleaned text
-        article_content = "\n".join([p.text.strip() for p in paragraphs if p.text.strip()])
-        app_logger.log_info(f"Article content extracted from {news_url}", level="INFO")
-        return article_content
+        except requests.exceptions.Timeout:
+            app_logger.log_warning(f"Timeout occurred while fetching article: {news_url}, attempt {attempt + 1}")
+            if attempt < retries - 1:
+                time.sleep(2)  # Wait before retrying
+                continue
+            return "Error: Timeout occurred while fetching article."
 
-    except Exception as e:
-        app_logger.log_error(f"Error extracting article content: {e}")
-        return f"Error extracting article content: {e}"
+        except Exception as e:
+            app_logger.log_error(f"Error extracting article content: {e}")
+            return f"Error extracting article content: {e}"
 
+    return "Failed to fetch article after multiple attempts."
 
-# ============================ ASYNC NEWS SCRAPING ============================
+async def invoke_duckduckgo_news_search(query: str, num: int = 3, location: str = "us-en", time_filter: str = "w") -> Dict[str, Any]:
+    """
+    Perform a news search on DuckDuckGo and return the results.
 
-async def fetch_url_with_retries(url: str, headers: dict, max_retries: int = 3, timeout: int = 20) -> Optional[str]:
-    """Fetches a URL with retries and timeout."""
-    async with httpx.AsyncClient() as client:
-        for attempt in range(max_retries):
-            try:
-                response = await client.get(url, headers=headers, timeout=timeout)
-                response.raise_for_status()
-                return response.text
-            except httpx.TimeoutException:
-                app_logger.log_error(f"Attempt {attempt+1}: Request timed out.")
-            except httpx.HTTPStatusError as e:
-                app_logger.log_error(f"Attempt {attempt+1}: HTTP error {e.response.status_code}.")
-            await asyncio.sleep(2)  # Wait before retrying
-    return None
+    Args:
+        query (str): The search query.
+        num (int): The number of results to return.
+        location (str): The location filter for the search.
+        time_filter (str): The time filter for the search.
 
-async def invoke_duckduckgo_news_search(query: str, num: int = 5, location: str = "us-en", time_filter: str = "w") -> Dict[str, Any]:
-    """Performs a DuckDuckGo News search asynchronously with retries."""
+    Returns:
+        Dict[str, Any]: A dictionary containing the search results.
+    """
     app_logger.log_info(f"Starting DuckDuckGo news search for query: {query}", level="INFO")
 
-    duckduckgo_news_url = f"https://duckduckgo.com/html/?q={query.replace(' ', '+')}&kl={location}&df={time_filter}&ia=news"
-    headers = {"User-Agent": "Mozilla/5.0"}
+    chrome_options: Options = Options()
+    chrome_options.add_argument("--headless")
+    driver: webdriver.Chrome = webdriver.Chrome(options=chrome_options)
 
-    html_content = await fetch_url_with_retries(duckduckgo_news_url, headers)
-    if not html_content:
-        return {"status": "error", "message": "Failed to fetch news search results after multiple retries."}
+    duckduckgo_news_url: str = f"https://duckduckgo.com/html/?q={query.replace(' ', '+')}&kl={location}&df={time_filter}&ia=news"
+    driver.get(duckduckgo_news_url)
 
-    soup = BeautifulSoup(html_content, "html.parser")
-    search_results = soup.find_all("div", class_="result__body")
+    soup: BeautifulSoup = BeautifulSoup(driver.page_source, "html.parser")
+    search_results: List[BeautifulSoup] = soup.find_all("div", class_="result__body")
 
-    async def process_article(result, index: int) -> Optional[Dict[str, Any]]:
-        """Extracts and processes an article."""
+    def process_article(result: BeautifulSoup, index: int) -> Optional[Dict[str, Any]]:
+        """
+        Process a single search result and extract relevant information.
+
+        Args:
+            result (BeautifulSoup): The search result to process.
+            index (int): The index of the search result.
+
+        Returns:
+            Optional[Dict[str, Any]]: A dictionary containing the extracted information, or None if an error occurs.
+        """
         try:
-            title_tag = result.find("a", class_="result__a")
+            title_tag: Optional[BeautifulSoup] = result.find("a", class_="result__a")
             if not title_tag:
+                app_logger.log_warning(f"Title tag not found for result index {index}")
                 return None
 
-            title = title_tag.text.strip()
-            raw_link = title_tag["href"]
-            match = re.search(r"uddg=(https?%3A%2F%2F[^&]+)", raw_link)
-            link = urllib.parse.unquote(match.group(1)) if match else "Unknown Link"
+            title: str = title_tag.text.strip()
+            raw_link: str = title_tag["href"]
 
-            snippet_tag = result.find("a", class_="result__snippet")
-            summary = snippet_tag.text.strip() if snippet_tag else "No summary available."
+            match: Optional[re.Match] = re.search(r"uddg=(https?%3A%2F%2F[^&]+)", raw_link)
+            link: str = urllib.parse.unquote(match.group(1)) if match else "Unknown Link"
 
-            return {"num": index + 1, "link": link, "title": title, "summary": summary}
+            snippet_tag: Optional[BeautifulSoup] = result.find("a", class_="result__snippet")
+            summary: str = snippet_tag.text.strip() if snippet_tag else "No summary available."
+
+            article_content: str = extract_news_body(link)
+
+            bot: ChatBot = ChatBot()
+
+            # Rate the rate_body_of_article
+            # rating: str = asyncio.run(bot.rate_body_of_article(title, article_content))
+
+            # Rate the credibility of the article
+            rating: str = asyncio.run(bot.rate_article_credibility(title, article_content))
+
+            app_logger.log_info(f"Processed article: {title}", level="INFO")
+
+            return {
+                "num": index + 1,
+                "link": link,
+                "title": title,
+                "summary": summary,
+                "body": article_content,
+                "rating": rating
+            }
 
         except Exception as e:
             app_logger.log_error(f"Error processing article: {e}")
             return None
 
-    tasks = [process_article(result, index) for index, result in enumerate(search_results[:num])]
-    extracted_results = await asyncio.gather(*tasks)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        tasks: List[concurrent.futures.Future] = [executor.submit(process_article, result, index) for index, result in enumerate(search_results[:num])]
+        extracted_results: List[Optional[Dict[str, Any]]] = [task.result() for task in concurrent.futures.as_completed(tasks)]
+
+    driver.quit()
 
     extracted_results = [res for res in extracted_results if res is not None]
 
@@ -221,24 +298,15 @@ async def invoke_duckduckgo_news_search(query: str, num: int = 5, location: str 
         app_logger.log_error("No valid news search results found")
         return {"status": "error", "message": "No valid news search results found"}
 
-
-
-# ============================ UTILITY FUNCTIONS ============================
-
 def current_year() -> int:
     """Returns the current year as an integer."""
     return datetime.now().year
 
-
 def save_to_audio(text: str) -> None:
     """Converts text to an audio file using Google Text-to-Speech (gTTS)."""
     try:
-        tts = gTTS(text=text, lang="en")
+        tts: gTTS = gTTS(text=text, lang="en")
         tts.save("output.mp3")
         app_logger.log_info("Response converted to audio", level="INFO")
     except Exception as e:
         app_logger.log_error(f"Error converting response to audio: {e}")
-
-if __name__ == "__main__":
-    # test duckduckgo news search
-    asyncio.run(invoke_duckduckgo_news_search("AI in healthcare", num=2, location="us-en", time_filter="w"))
