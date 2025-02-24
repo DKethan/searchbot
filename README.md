@@ -20,8 +20,8 @@ SearchBot is an advanced AI-powered research assistant that helps you find the l
 
 2. **Create a virtual environment and activate it**:
     ```sh
-    python3 -m venv venv
-    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+    python3 -m venv sb-001
+    source sb-001/bin/activate  # On Windows use `sb-001\Scripts\activate`
     ```
 
 3. **Install the required packages**:
