@@ -86,7 +86,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 1. **Clone the repository**:
     ```sh
-    git clone https://github.com/yourusername/searchbot.git
+    git clone https://github.com/DKethan/searchbot.git
     cd searchbot
     ```
 
