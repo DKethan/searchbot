@@ -16,6 +16,8 @@ from bs4 import BeautifulSoup
 from gtts import gTTS
 from huggingface_hub import hf_hub_download
 from keras.utils import pad_sequences
+from transformers import BertTokenizer
+
 from logger.app_logger import app_logger
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -137,30 +139,40 @@ class ChatBot:
             str: A credibility rating based on the model's prediction.
         """
         try:
-            # Load the model and tokenizer
-            model_path: str = hf_hub_download(repo_id="Dkethan/my-tf-nn-model-v1", filename="model.keras")
-            tokenizer_path: str = hf_hub_download(repo_id="Dkethan/my-tf-nn-model-v1", filename="tokenizer.pkl")
-
+            # Load the model
+            model_path: str = hf_hub_download(repo_id="Dkethan/my-tf-nn-model-v2", filename="model.keras")
             new_model = keras.models.load_model(model_path)
-            with open(tokenizer_path, "rb") as f:
-                tokenizer = pickle.load(f)
+
+            # Load the Hugging Face tokenizer
+            tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
             # Preprocess the input data
-            max_length: int = new_model.input_shape[0][1]
-            X_text: List[List[int]] = tokenizer.texts_to_sequences([article_title])
-            X_text = pad_sequences(X_text, maxlen=max_length, padding='post')
-            X_func_rating: np.ndarray = np.array([5]).reshape(-1, 1)  # Dummy rating for example
+            max_length: int = new_model.input_shape[0][1]  # Ensure max_length matches the model input
+            X_text = tokenizer(
+                [article_title],  # Tokenize the article title
+                max_length=max_length,
+                padding="max_length",
+                truncation=True,
+                return_tensors="tf"
+            )
+
+            # Dummy 'func_rating' input (can be replaced with actual data)
+            X_func_rating: np.ndarray = np.array([5]).reshape(-1, 1)  # Replace with actual input if available
 
             # Make predictions
-            predictions: np.ndarray = new_model.predict({"text_input": X_text, "func_rating_input": X_func_rating})
+            predictions: np.ndarray = new_model.predict(
+                {"text_input": X_text["input_ids"], "func_rating_input": X_func_rating}
+            )
             prediction: int = np.argmax(predictions, axis=1)[0]
 
+            # Log and return the prediction
             app_logger.log_info(f"Article credibility rated: {prediction}", level="INFO")
             return str(prediction)
 
         except Exception as e:
             app_logger.log_error(f"Error rating article credibility: {e}")
             return "Error"
+
 
 def extract_news_body(news_url: str) -> str:
     """
